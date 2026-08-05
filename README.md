@@ -1,24 +1,52 @@
 # filebrowser.h
 
-A Windows-Explorer-style file browser for [Dear ImGui](https://github.com/ocornut/imgui), in a single header.
-
-Drop one file into your project, include it, and you get a real file browser: a navigation tree that
-mirrors your actual Windows Quick access pins, live drives with volume labels and capacity bars, four
-view modes, drag-and-drop, and the file operations you'd expect from a right-click.
+A single-header file browser for [Dear ImGui](https://github.com/ocornut/imgui), modelled on Windows Explorer.
 
 ![File browser](docs/screenshot-main.png)
 
-## Getting started
+## Features
 
-Copy `filebrowser.h` next to your Dear ImGui headers and include it.
+- Sidebar tree with **Quick access** read from the real Windows shell folder, so pins made in Explorer appear here
+- **This PC** section listing every drive with its volume label, type and a used/free capacity bar
+- Four view modes: Details, List, Tiles and Large icons
+- Drag and drop inside the browser. Drops move by default and copy while <kbd>Ctrl</kbd> is held
+- Right-click menus for New folder, Cut, Copy, Paste, Rename, Delete and Pin
+- Breadcrumb address bar that turns into an editable path field
+- Multi-select, natural sorting with folders first, search, hidden-file toggle and optional grouping by date
+- Delete moves items to the Recycle Bin on Windows
+- Icons are drawn with `ImDrawList`, so no icon font is required
+- Pins and preferences persist to a plain-text ini
+
+## Requirements
+
+| | |
+| --- | --- |
+| Language | C++17, for `<filesystem>` |
+| Dear ImGui | 1.87 or newer |
+| Windows libraries | `Shell32`, `Ole32`, `Uuid`, linked automatically through `#pragma comment` |
+
+The header also builds on Linux and macOS. There, drives collapse to a single `/` entry, Quick access
+falls back to `$HOME` and its standard subfolders, and delete removes files outright rather than using
+a recycle bin.
+
+## Installation
+
+Copy `filebrowser.h` into your project alongside the Dear ImGui headers, then include it.
 
 ```cpp
 #include "imgui.h"
 #include "filebrowser.h"
+```
 
+## Usage
+
+### As a panel
+
+`Draw()` fills whatever window it is called in and returns the action taken this frame.
+
+```cpp
 static imex::FileExplorer browser;
 
-// ...inside your ImGui frame
 ImGui::Begin("File browser");
 
 switch (browser.Draw())
@@ -36,22 +64,13 @@ default:
 ImGui::End();
 ```
 
-`Draw()` fills whatever window you call it in, and returns `Action::Open` on the frame the user
-double-clicks a file or presses **Open**.
+`Action::Open` is returned when the user double-clicks a file or presses **Open**. Call
+`browser.ShowFooter(false)` to hide the Open and Cancel row when embedding the browser as a plain
+panel.
 
-**Requirements**
+### As a modal dialog
 
-- C++17 (uses `<filesystem>`)
-- Dear ImGui 1.87 or newer
-- Windows: links `Shell32`, `Ole32` and `Uuid` automatically via `#pragma comment`
-
-It also compiles on Linux and macOS, where drives collapse to `/`, Quick access falls back to `$HOME`
-and its standard subfolders, and delete is a plain remove instead of a trip to the Recycle Bin.
-
-## As a modal dialog
-
-The same browser works as an open-file dialog. Call `ImGui::OpenPopup` once, then call
-`DrawPickerModal` every frame.
+Open the popup once, then call `DrawPickerModal` every frame.
 
 ```cpp
 if (ImGui::Button("Open file..."))
@@ -61,63 +80,60 @@ if (browser.DrawPickerModal("Open file") == imex::FileExplorer::Action::Open)
     LoadFile(browser.SelectedPath());
 ```
 
-Pass `true` as the second argument to pick a folder instead of a file:
+Pass `true` as the second argument to select a folder instead of a file.
 
 ```cpp
 browser.DrawPickerModal("Choose a folder", /*foldersOnly=*/true);
 ```
 
-## Features
+### Reading the selection
 
-**Navigation tree.** The Quick access section is read from the real Windows Quick access shell folder,
-so whatever you pinned in Explorer shows up here too. Below it, This PC lists every drive with its
-volume label, type and a used/free capacity bar that turns red past 90% full. Plug in a USB stick and
-it appears within two seconds.
+```cpp
+browser.SelectedPath();     // focused item, empty if nothing is selected
+browser.SelectedPaths();    // every selected item
+browser.CurrentPath();      // folder currently shown
+```
 
-**Four view modes.** Details, List, Tiles and Large icons, switchable from the toolbar or with
-<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd>..<kbd>4</kbd>. Icons are drawn with `ImDrawList`, so
-there is no icon font to ship.
+## View modes
+
+Switch from the toolbar or with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd> through <kbd>4</kbd>.
 
 ![View modes](docs/screenshot-views.png)
 
-**Drag and drop.** Drag a selection onto a folder row, a sidebar node, or the `...` row to move it
-there. Hold <kbd>Ctrl</kbd> while dropping to copy instead. Moves across volumes fall back to
-copy-then-delete automatically.
+## Right-click menus
 
-**Right-click menus.** Items get Open, Cut, Copy, Paste, Pin, New folder, Rename and Delete. Empty
-space gets New folder, Paste, Up one level, Refresh, hidden-file toggle and Pin this folder.
+File operations live in the context menus rather than the toolbar. Right-clicking an item offers Open,
+Cut, Copy, Paste, Pin, New folder, Rename and Delete. Right-clicking empty space offers New folder,
+Paste, Up one level, Refresh, the hidden-file toggle and Pin this folder.
 
 ![Context menu](docs/screenshot-menu.png)
 
-**The rest.** Breadcrumb address bar drawn as a real address field: each segment is clickable, and
-clicking the empty part of it (or pressing <kbd>Ctrl</kbd>+<kbd>L</kbd>) turns it into a text box with
-the current path selected. Plus back/forward/up history, search box, multi-select with
-<kbd>Ctrl</kbd> and <kbd>Shift</kbd>, natural sorting with folders first, optional grouping by date,
-inline rename, and delete via the Recycle Bin with a confirmation dialog.
+## API
 
-## Options
+### Options
 
-| Call | What it does |
+| Method | Description |
 | --- | --- |
-| `SetUiScale(float)` | Density, default `0.85`. Lower packs more rows in. Scales padding, spacing, row heights and icons, never the font, so it is safe on any ImGui version. |
-| `ShowFooter(bool)` | Hide the Open/Cancel row when you are embedding the browser as a plain panel. |
-| `SetViewMode(ViewMode)` | `Details`, `List`, `Tiles` or `Icons`. |
-| `ShowHiddenFiles(bool)` | Show hidden and system files. |
-| `SetConfigPath(path)` | Where settings and pins are stored. Pass an empty path to keep everything in memory. |
-| `Navigate(path)` | Jump to a folder. |
-| `Pin(path)` / `Unpin(path)` / `IsPinned(path)` | Manage your own Quick access pins. |
+| `SetUiScale(float)` | Interface density, default `0.85`. Lower values fit more rows on screen. Affects padding, spacing, row heights and icon sizes. The font is never changed, so the call is safe on any Dear ImGui version. |
+| `ShowFooter(bool)` | Show or hide the Open and Cancel row. |
+| `SetViewMode(ViewMode)` | One of `Details`, `List`, `Tiles` or `Icons`. |
+| `ShowHiddenFiles(bool)` | Include hidden and system files in listings. |
+| `SetConfigPath(path)` | Location of the settings file. Pass an empty path to keep settings in memory only. |
+| `Navigate(path)` | Change to another folder. |
+| `Pin(path)`, `Unpin(path)`, `IsPinned(path)` | Manage Quick access pins owned by the browser. |
 
-Reading results:
+### Queries
 
-| Call | Returns |
+| Method | Returns |
 | --- | --- |
-| `SelectedPath()` | The focused item, or an empty path if nothing is selected. |
-| `SelectedPaths()` | Every selected item, for multi-select. |
-| `CurrentPath()` | The folder currently being shown. |
+| `SelectedPath()` | The focused item, or an empty path when nothing is selected. |
+| `SelectedPaths()` | All selected items. |
+| `CurrentPath()` | The folder being shown. |
+| `UiScale()`, `GetViewMode()`, `HiddenFilesShown()`, `FooterShown()`, `ConfigPath()` | Current settings. |
 
 ```cpp
-browser.SetUiScale(0.75f);          // tighter
-browser.ShowFooter(false);          // no Open/Cancel row
+browser.SetUiScale(0.75f);
+browser.ShowFooter(false);
 browser.SetViewMode(imex::FileExplorer::ViewMode::Icons);
 
 for (const auto& path : browser.SelectedPaths())
@@ -126,25 +142,36 @@ for (const auto& path : browser.SelectedPaths())
 
 ## Keyboard
 
-| Key | Action |
+| Shortcut | Action |
 | --- | --- |
-| <kbd>Backspace</kbd> | Up one level |
-| <kbd>Enter</kbd> | Open selection |
+| <kbd>Backspace</kbd> | Go up one level |
+| <kbd>Enter</kbd> | Open the selection |
 | <kbd>F2</kbd> | Rename |
 | <kbd>F5</kbd> | Refresh |
-| <kbd>Delete</kbd> | Move to Recycle Bin |
-| <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> | Copy / cut / paste |
-| <kbd>Ctrl</kbd>+<kbd>L</kbd> | Edit the path |
+| <kbd>Delete</kbd> | Move to the Recycle Bin |
+| <kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>V</kbd> | Copy, cut, paste |
+| <kbd>Ctrl</kbd>+<kbd>L</kbd> | Edit the current path |
 | <kbd>Ctrl</kbd>+<kbd>H</kbd> | Toggle hidden files |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd>..<kbd>4</kbd> | Details / List / Tiles / Large icons |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd> to <kbd>4</kbd> | Details, List, Tiles, Large icons |
 
-Shortcuts are active once the panel has ImGui focus, so they never steal keys from the rest of your
+Shortcuts become active once the panel has ImGui focus, so they never take keys from the rest of the
 application.
 
-## Settings
+## Mouse
 
-Pins and preferences are written to `%APPDATA%\imex\FileBrowser.ini`, or
-`~/.config/imex_filebrowser.ini` on other platforms. The format is plain text:
+| Gesture | Result |
+| --- | --- |
+| Double-click a folder | Enter it |
+| Double-click the `...` row | Go up one level |
+| Drag onto a folder row or sidebar node | Move the selection there |
+| <kbd>Ctrl</kbd> while dropping | Copy instead of move |
+| Click the address bar | Edit the path as text |
+| Drag the divider | Resize the sidebar |
+
+## Configuration
+
+Settings are written to `%APPDATA%\imex\FileBrowser.ini` on Windows and
+`~/.config/imex_filebrowser.ini` elsewhere.
 
 ```ini
 # filebrowser.h settings
@@ -155,27 +182,26 @@ pin=C:\Users\You\Projects
 hide=C:\Users\You\Videos
 ```
 
-`pin` lines are folders you pinned inside the browser. `hide` lines are Quick access entries you chose
-to hide. Point this somewhere else with `SetConfigPath()`, or pass an empty path to disable the file
-entirely.
+`pin` entries are folders pinned from inside the browser. `hide` entries are Quick access rows the
+user chose to hide. Use `SetConfigPath()` to relocate the file, or pass an empty path to disable it.
+
+## Limitations
+
+**Pinned and frequent folders cannot be separated.** Windows reports `System.Home.IsPinned` as true
+for every entry in the Quick access folder, including merely frequent ones. The sidebar therefore
+shows the complete list, matching the behaviour of Explorer's own Quick access node.
+
+**Entries added by Windows cannot be un-pinned.** Removing them requires the shell's own verb, which
+this header does not invoke. Use **Hide from Quick access** instead. The choice is stored in the ini.
+Folders pinned from inside the browser can be un-pinned normally.
+
+**Listings are read on the calling thread.** This is not noticeable on local disks, but a slow network
+share will cost a frame when its folder is opened.
+
+**No shell integration.** Icons are drawn rather than taken from the shell, and double-clicking a file
+reports it to the application rather than launching it.
 
 ## Notes
 
-**Pinned vs. frequent.** Windows reports `System.Home.IsPinned` as true for *every* entry in the Quick
-access folder, including merely-frequent ones, so the two cannot be told apart. The sidebar therefore
-shows the whole list, exactly like Explorer's own Quick access node does.
-
-**Un-pinning inherited entries.** Removing something Windows put in Quick access needs the shell's own
-verb, which this header does not invoke. Use **Hide from Quick access** instead; the choice is
-remembered in the ini. Folders you pinned from inside the browser can be un-pinned normally.
-
-**Threading.** Directory listings are read on the calling thread. That is fine for local disks, but a
-slow network share will cost you a frame on the folder you open.
-
-**No shell integration.** Icons are drawn, not pulled from the shell, and double-clicking a file
-reports it back to your code rather than launching it in its default application.
-
-## About
-
-Built against Dear ImGui 1.93, compiles clean at `/W4 /permissive-`. The header is plain ASCII and has
-no dependencies beyond Dear ImGui and the standard library.
+Built and tested against Dear ImGui 1.93. The header is plain ASCII, compiles clean at
+`/W4 /permissive-`, and depends on nothing beyond Dear ImGui and the standard library.
